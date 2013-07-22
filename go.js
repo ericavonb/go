@@ -23,13 +23,10 @@ var WHITE = 2;
 
 // The Board object
 var Board = function(n) {
-
-    // size of board. Default: 19
-    var n = n || 19; 
+    var n = n || 19; // size of board. Default: 19
 
     // create n x n array of 0's
     var board = new Array(n); 
-
     for (var i = 0; i < n; i++) {
 	board[i] = new Array(n);
 	for (var j = 0; j < n; j++)
@@ -39,14 +36,7 @@ var Board = function(n) {
     this.n = n; // board size
     this.board = board; // board object
 
-    // cache of the locations of each piece of the colors
-    this.colors = {}; 
-    this.colors[WHITE] = {};
-    this.colors[BLACK] = {};
-
-    // cache of the locations of the neighbors of each piece
-    this.neighbors = {};
-
+    this.neighbors = {}; // cache of coordinates of neighbors for pieces
 }
 
 // Format Board as String
@@ -60,130 +50,99 @@ Board.prototype.toString = function() {
     return str;
 }
 
-// Function to get the locations of a piece's neighbors
-// 'row' is the row, 'col' is the column of the piece
-// returns array of locations (an array of row and column)
-Board.prototype.getNeighbors = function(row, col) {
-
-    // Look up neighbors in cache and return if found
-    if (this.neighbors[[row, col]]) 
-	return this.neighbors[[row, col]];
-
-    var nbrs = [];
-
-    // check edge conditions
-    if (0 < row)
-	nbrs.push([row - 1,  col]);
-    if (0 < col) 
-	nbrs.push([row,  col - 1]);
-    if (row < (this.n - 1))
-	nbrs.push([row + 1,  col]);
-    if (col < (this.n - 1))
-	nbrs.push([row,  col + 1]);
-
-    // store new value
-    this.neighbors[[row, col]] = nbrs;
-
+// Get the coordinates for all pieces adjacent to piece
+Board.prototype.getNeighbors = function(piece) {
+    // Look up 'piece' in 'this.neighbors'
+    var nbrs = this.neighbors[piece];
+    // If 'piece' wasn't in cache, make list of neighboring points.
+    if (typeof nbrs === 'undefined') {
+	var row = piece[0];
+	var col = piece[1];
+	nbrs = [];
+	// add to 'nbrs' each adjacent point that isn't off the board
+	if (0 < row)
+	    nbrs.push([row - 1,  col]);
+	if (0 < col) 
+	    nbrs.push([row,  col - 1]);
+	if (row < (this.n - 1))
+	    nbrs.push([row + 1,  col]);
+	if (col < (this.n - 1))
+	    nbrs.push([row,  col + 1]);
+	// cache neighbors for point
+	this.neighbors[piece] = nbrs;
+    }
+    // return the set of neighboring points
     return nbrs;
 }
 
-// Function to see if a piece is captured.
-// 'row' is the row, 'col' is the column of the piece
-// 'caps' is an array storing calculated capture values
-// returns 'true' if piece is captured, 'false' otherwise
-Board.prototype.isCaptured = function(row, col, caps) {
 
-    // Helper function to get if captured
-    function captured(row, col, board) {
-	var color, nbrs, n, l, nbr, i, j, c;
+// Get coordinates of all pieces that are captured by the playing of 'color' at [row, col]
+Board.prototype.getCaptured = function(row, col, color) {
+    var capturedStore = {}; // cache of if points have been found to be captured 
+    var board = this;
+    var capturedPoints = []; // all captured points
 
-	// look up value and return if found
-	if (caps[[row, col]]) 
-	    return caps[[row, col]]; 
-	
-	caps[[row, col]] = true; // default
-	color = board.board[row][col];
-	nbrs = board.getNeighbors(row, col);
+    // Helper function to see if a piece is capturing. 'piece' is array of its position
+    function isCaptured(piece) {
+	var clr, n, captured, nbrs, i, len;
+	// If a value for 'piece' is in cache, return the stored value
+	captured = capturedStore[piece];
+	if (typeof captured !== 'undefined')
+	    return captured;
 
-	// check if each neighboring piece is EMPTY 
-	// or if the same color, that its not captured.
-	for (n = 0, l = nbrs.length; n < l; n++) {
-	    i = nbrs[n][0];
-	    j = nbrs[n][1];
-	    nbr = board.board[i][j];
+	capturedStore[piece] = true; // default value
+	nbrs = board.getNeighbors(piece); // neighbors of piece
 
-	    if (nbr === EMPTY) {
-		caps[[row, col]] = false;
+	// Check if each neighbor is capturing and if not, 
+	// set 'piece' in 'captureStore' to FALSE and return FALSE.
+	for (i = 0, len = nbrs.length; i < len; i++) {
+	    n = nbrs[i];
+	    clr = board.board[n[0]][n[1]];
+	    // if neighbor is empty or not 'color' and calling isCaptured on it returns false
+	    // store value of false of 'piece' and return false.
+	    captured = (clr === EMPTY) ? false : ((clr === color) ? true : isCaptured(n));
+	    if (! captured) {
+		capturedStore[piece] = false;
 		return false;
 	    }
-	    if (nbr === color) {
-		c = captured(i, j, board);
-		if (! c) {
-		    caps[[row, col]] = false;
-		    return false;
-		}
-	    }
 	}
-	// all neighbors are non-Empty/captured, return true;
-	return true; 
+	capturedPoints.push(piece); // add 'piece' to 'captured' list.
+	return true;
     }
-    // call helper on initial values and return result
-    return captured(row, col, this); 
+    // call helper on initial values
+    isCaptured([row, col]);
+    return capturedPoints;
 }
 
-// Get the locations of all captured pieces of the color 'color'
-Board.prototype.getCaptured = function(color) {
-    var c;
-    var res = [];
-    var caps = {};
-
-    for (var i in this.colors[color]) {
-	c = this.colors[color][i];
-	if (this.isCaptured(c[0], c[1], caps))
-	    res.push(c);
-    }
-
-    return res;
-}
 
 // Remove all Captured pieces of color 'color' from board
-Board.prototype.remove = function(color) {
-    var captured = this.getCaptured(color);
-    var c;
-    for (var i = 0; i < captured.length; i++) {
-	c = captured[i];
-	this.board[c[0]][c[1]] = EMPTY;
-	this.colors[color][c] = null;
-    }
+Board.prototype.remove = function(row, col, color) {
+    var captured = this.getCaptured(row, col, color);
+
+    for (var i = 0; i < captured.length; i++)
+	this.board[captured[i][0]][captured[i][1]] = EMPTY;
+
     return captured;
 }
 
-// Move a piece of color 'color' to the position 'row' x 'col'
-// Logs if move captures any pieces.
+// Move a piece of color 'color' to ('row', 'col'). Logs any captured pieces.
 Board.prototype.move = function(color, row, col) {
-
-    // Set board at [row, col] to 'color'
+    // Place piece on board
     this.board[row][col] = color;
-
-    // Save location in colors cache
-    this.colors[color][[row, col]] = [row, col];
-
     // Remove any captured stones of the opponent
-    var captured = (color === WHITE)? this.remove(BLACK) : this.remove(WHITE);
-
+    var captured = this.remove(row, col, color);
     // Log any captures
     if (captured.length > 0) {
 	console.log("Opponent's Pieces captured: ");
 	console.log(captured);
     }
-
     return this;
 }
 
 
 var b = new Board();
 
-b.move(BLACK, 4, 4);
+/*b.move(BLACK, 4, 4);
 b.move(BLACK, 4, 5);
 b.move(WHITE, 3, 4);
 b.move(WHITE, 3, 5);
@@ -191,5 +150,68 @@ b.move(WHITE, 4, 3);
 b.move(WHITE, 4, 6);
 b.move(WHITE, 5, 4);
 b.move(WHITE, 5, 5);
+b.move(BLACK, 0, 0);*/
 
+var testMoves = [[BLACK, 4, 4],
+		 [BLACK, 4, 5],
+		 [WHITE, 3, 4],
+		 [WHITE, 3, 5],
+		 [WHITE, 4, 3],
+		 [WHITE, 4, 6],
+		 [WHITE, 5, 4],
+		 [WHITE, 5, 5]];
+
+var cap1 = [[BLACK, 4, 5],
+	    [BLACK, 5, 5],
+	    [BLACK, 6, 5],
+	    [BLACK, 5, 6],
+	    [BLACK, 6, 6],
+	    [BLACK, 5, 7],
+	    [BLACK, 4, 7],
+	    
+	    [WHITE, 4, 4],
+	    [WHITE, 5, 4],
+	    [WHITE, 6, 4],
+	    [WHITE, 7, 5],
+	    [WHITE, 7, 6],
+	    [WHITE, 6, 7],
+	    [WHITE, 5, 8],
+	    [WHITE, 4, 8],
+	    [WHITE, 3, 7],
+	    [WHITE, 4, 6],
+	    [WHITE, 3, 5]
+	    ];
+var set2 = [[BLACK, 0, 2],
+	    [BLACK, 0, 3],
+
+	    [WHITE, 1, 0],
+	    [WHITE, 1, 1],
+	    [WHITE, 1, 3],
+
+	    [WHITE, 2, 0],
+	    [BLACK, 2, 1],
+	    [WHITE, 2, 2],
+	    [BLACK, 2, 3],
+	    [WHITE, 2, 4],
+
+	    [BLACK, 3, 0],
+	    [BLACK, 3, 2],
+	    [BLACK, 3, 3],
+	    [WHITE, 3, 4],
+	    
+	    [BLACK, 4, 0],
+	    [BLACK, 4, 1],
+	    [WHITE, 4, 2],
+	    [WHITE, 4, 3],
+	    
+	    [WHITE, 3, 1]];
+
+var moves = cap1;
 console.log(b.toString());
+for (var i = 0; i < moves.length; i++) {
+    console.log(moves[i]);
+
+    b.move.apply(b, moves[i]);   
+ console.log(b.toString());
+}
+
